@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sala de Call</title>
+<style>
+:root{--bg:#14161f;--panel:#1b1e2b;--panel2:#232738;--line:#2e3348;--txt:#e7e9f3;--mut:#8b90a8;--acc:#6c7bff;--ok:#3ddc97;--bad:#ff5d6c}
+*{box-sizing:border-box}
+body{margin:0;height:100vh;background:var(--bg);color:var(--txt);font:15px/1.4 "Segoe UI",system-ui,sans-serif;display:flex;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.on{background:var(--acc);border-color:var(--acc)}
+button.off{background:var(--bad);border-color:var(--bad)}
+#join{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:10}
+#join form{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;width:min(380px,92vw);display:grid;gap:14px}
+#join h1{margin:0;font-size:24px}
+#join p{margin:0;color:var(--mut)}
+input[type=text]{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
+#join button{background:var(--acc);border-color:var(--acc);font-weight:600}
+aside{width:240px;background:var(--panel);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:10px;flex:none}
+aside h2{margin:0;font-size:13px;color:var(--mut);font-weight:600}
+.chan{padding:8px 10px;border-radius:8px;background:var(--panel2)}
+#people{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+#people li{display:flex;align-items:center;gap:8px;padding:4px 6px}
+#people i{width:26px;height:26px;border-radius:50%;background:var(--acc);display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:700}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+#stage{flex:1;overflow:auto;padding:16px;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));align-content:start}
+#empty{grid-column:1/-1;color:var(--mut);text-align:center;margin-top:12vh}
+.tile{background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative;aspect-ratio:16/9}
+.tile.hidden{display:none}
+.tile video{width:100%;height:100%;object-fit:contain;background:#000}
+.tile .bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;align-items:center;padding:8px 12px;background:linear-gradient(transparent,#000c);opacity:0;transition:opacity .15s}
+.tile:hover .bar,.tile:focus-within .bar{opacity:1}
+.tile .bar input{width:100px}
+.tile .bar button{padding:4px 10px;margin-left:auto}
+footer{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+#settings{width:320px;background:var(--panel);border-left:1px solid var(--line);padding:16px;overflow:auto;display:none;flex:none}
+#settings.open{display:block}
+#settings h3{margin:18px 0 8px;font-size:13px;color:var(--mut)}
+#settings h3:first-child{margin-top:0}
+#settings label{display:grid;gap:4px;margin:8px 0}
+#settings label.chk{display:flex;gap:8px;align-items:center}
+#settings select,#settings input[type=range]{width:100%}
+#settings select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+small{color:var(--mut)}
+@media(max-width:800px){aside{display:none}#settings{position:fixed;right:0;top:0;bottom:0;z-index:5}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="join">
+  <form id="joinForm">
+    <h1>Sala de call</h1>
+    <p>Uma sala só. Entre para ver as telas e conversar.</p>
+    <input type="text" id="nameIn" placeholder="Seu nome" maxlength="24" required autofocus>
+    <button type="submit">Entrar na call</button>
+    <small id="joinErr"></small>
+  </form>
+</div>
+
+<aside>
+  <h2>Canal de voz</h2>
+  <div class="chan">🔊 Call geral</div>
+  <h2>Na call — <span id="count">0</span></h2>
+  <ul id="people"></ul>
+</aside>
+
+<main>
+  <div id="stage"><p id="empty">Ninguém está compartilhando a tela ainda. Clique em “Compartilhar tela”.</p></div>
+  <footer>
+    <button id="btnMic" class="on">🎤 Microfone</button>
+    <button id="btnShare">🖥️ Compartilhar tela</button>
+    <button id="btnSet">⚙️ Configurações</button>
+    <button id="btnLeave" class="off">Sair</button>
+  </footer>
+</main>
+
+<section id="settings" aria-label="Configurações">
+  <h3>Microfone</h3>
+  <label>Dispositivo de entrada<select id="micDev"></select></label>
+  <label>Volume do microfone: <span id="gainV">100</span>%<input type="range" id="gain" min="0" max="200" value="100"></label>
+  <label class="chk"><input type="checkbox" id="ec" checked> Cancelamento de eco</label>
+  <label class="chk"><input type="checkbox" id="ns" checked> Supressão de ruído</label>
+  <label class="chk"><input type="checkbox" id="agc" checked> Ganho automático</label>
+
+  <h3>Saída de som</h3>
+  <label>Dispositivo de saída<select id="outDev"></select></label>
+  <label>Volume geral: <span id="outV">100</span>%<input type="range" id="out" min="0" max="100" value="100"></label>
+
+  <h3>Transmissão de tela</h3>
+  <label>Resolução<select id="res"><option value="0">Original da tela</option><option value="1080" selected>1080p</option><option value="720">720p</option><option value="480">480p</option></select></label>
+  <label>Quadros por segundo<select id="fps"><option>15</option><option selected>30</option><option>60</option></select></label>
+  <label>Qualidade (bitrate)<select id="br"><option value="1">1 Mbps</option><option value="2.5" selected>2,5 Mbps</option><option value="5">5 Mbps</option><option value="8">8 Mbps</option></select></label>
+  <label>Otimizar para<select id="hint"><option value="motion">Movimento (jogos, vídeo)</option><option value="detail">Nitidez (texto, código)</option></select></label>
+  <label class="chk"><input type="checkbox" id="sysaudio" checked> Enviar o som do sistema/aba</label>
+  <small>Mudanças de resolução, FPS e som do sistema valem na próxima vez que você compartilhar. A qualidade vale na hora.</small>
+</section>
+
+<script>
+const $ = s => document.querySelector(s);
+const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+let ws, myId, myName, ctx, gainNode, micDest, micSrc, micStream, screenStream, micOn = true;
+const pcs = new Map();   // peerId -> { pc, polite, making, ignore, name, senders, streams:Set }
+const names = {};
+
+/* ---------- Entrada ---------- */
+$('#joinForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  myName = $('#nameIn').value.trim() || 'Anônimo';
+  ctx = new AudioContext();
+  gainNode = ctx.createGain();
+  micDest = ctx.createMediaStreamDestination();
+  gainNode.connect(micDest);
+  try { await startMic(); } catch (err) { $('#joinErr').textContent = 'Sem acesso ao microfone — você entra só ouvindo.'; }
+  await fillDevices();
+  connect();
+});
+
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join', name: myName }));
+  ws.onmessage = async ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'welcome') {
+      myId = m.id; names[myId] = myName;
+      $('#join').style.display = 'none';
+      m.peers.forEach(p => { names[p.id] = p.name; makePeer(p.id); });
+      renderPeople();
+    } else if (m.type === 'peer-joined') {
+      names[m.id] = m.name; makePeer(m.id); renderPeople();
+    } else if (m.type === 'peer-left') {
+      dropPeer(m.id); renderPeople();
+    } else if (m.type === 'signal') {
+      onSignal(m.from, m.data);
+    }
+  };
+  ws.onclose = () => { if (myId) location.reload(); };
+}
+const sig = (to, data) => ws.send(JSON.stringify({ type: 'signal', to, data }));
+
+/* ---------- Microfone ---------- */
+async function startMic() {
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  const dev = $('#micDev').value;
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: {
+    deviceId: dev ? { exact: dev } : undefined,
+    echoCancellation: $('#ec').checked,
+    noiseSuppression: $('#ns').checked,
+    autoGainControl: $('#agc').checked,
+  }});
+  if (micSrc) micSrc.disconnect();
+  micSrc = ctx.createMediaStreamSource(micStream);
+  micSrc.connect(gainNode); // o track enviado (micDest) é sempre o mesmo, então não precisa renegociar
+}
+async function fillDevices() {
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const fill = (sel, kind) => {
+    const cur = sel.value; sel.innerHTML = '';
+    devs.filter(d => d.kind === kind).forEach((d, i) => sel.add(new Option(d.label || `${kind} ${i + 1}`, d.deviceId)));
+    if (cur) sel.value = cur;
+  };
+  fill($('#micDev'), 'audioinput'); fill($('#outDev'), 'audiooutput');
+}
+$('#micDev').onchange = () => startMic().catch(console.error);
+['ec', 'ns', 'agc'].forEach(id => $('#' + id).onchange = () => startMic().catch(console.error));
+$('#gain').oninput = e => { gainNode.gain.value = e.target.value / 100; $('#gainV').textContent = e.target.value; };
+$('#btnMic').onclick = () => {
+  micOn = !micOn;
+  micDest.stream.getAudioTracks().forEach(t => t.enabled = micOn);
+  $('#btnMic').classList.toggle('on', micOn);
+  $('#btnMic').classList.toggle('off', !micOn);
+  $('#btnMic').textContent = micOn ? '🎤 Microfone' : '🔇 Mutado';
+};
+
+/* ---------- Conexões (WebRTC, malha) ---------- */
+function makePeer(id) {
+  if (pcs.has(id)) return pcs.get(id);
+  const pc = new RTCPeerConnection(ICE);
+  const p = { pc, polite: Number(myId) > Number(id), making: false, ignore: false, senders: [], streams: new Set() };
+  pcs.set(id, p);
+  pc.onnegotiationneeded = async () => {
+    try { p.making = true; await pc.setLocalDescription(); sig(id, { description: pc.localDescription }); }
+    catch (e) { console.error(e); } finally { p.making = false; }
+  };
+  pc.onicecandidate = e => e.candidate && sig(id, { candidate: e.candidate });
+  pc.ontrack = e => showRemote(id, p, e.streams[0]);
+  micDest.stream.getTracks().forEach(t => pc.addTrack(t, micDest.stream));
+  if (screenStream) addScreen(p);
+  return p;
+}
+async function onSignal(from, { description, candidate }) {
+  const p = makePeer(from), pc = p.pc;
+  try {
+    if (description) {
+      const collision = description.type === 'offer' && (p.making || pc.signalingState !== 'stable');
+      p.ignore = !p.polite && collision;
+      if (p.ignore) return;
+      await pc.setRemoteDescription(description);
+      if (description.type === 'offer') { await pc.setLocalDescription(); sig(from, { description: pc.localDescription }); }
+    } else if (candidate) {
+      try { await pc.addIceCandidate(candidate); } catch (e) { if (!p.ignore) throw e; }
+    }
+  } catch (e) { console.error(e); }
+}
+function dropPeer(id) {
+  const p = pcs.get(id); if (!p) return;
+  p.pc.close(); p.streams.forEach(sid => document.getElementById('t-' + sid)?.remove());
+  pcs.delete(id); delete names[id]; updateEmpty();
+}
+
+/* ---------- Telas recebidas ---------- */
+function showRemote(id, p, stream) {
+  let tile = document.getElementById('t-' + stream.id);
+  if (!tile) {
+    p.streams.add(stream.id);
+    tile = document.createElement('div');
+    tile.className = 'tile hidden'; tile.id = 't-' + stream.id;
+    tile.innerHTML = `<video autoplay playsinline></video>
+      <div class="bar"><span></span><input type="range" min="0" max="100" value="100" aria-label="Volume desta tela"><button>Tela cheia</button></div>`;
+    const v = tile.querySelector('video');
+    v.srcObject = stream; v._own = 1;
+    tile.querySelector('span').textContent = '🖥️ ' + (names[id] || 'Participante');
+    tile.querySelector('input').oninput = e => { v._own = e.target.value / 100; applyVolume(v); };
+    tile.querySelector('button').onclick = () => v.requestFullscreen?.();
+    applyVolume(v); applySink(v);
+    $('#stage').appendChild(tile);
+    const refresh = () => { tile.classList.toggle('hidden', !stream.getVideoTracks().length); updateEmpty(); };
+    stream.onaddtrack = refresh;
+    stream.onremovetrack = () => { if (!stream.getTracks().length) { tile.remove(); } refresh(); };
+  }
+  tile.classList.toggle('hidden', !stream.getVideoTracks().length);
+  updateEmpty();
+}
+function updateEmpty() {
+  $('#empty').style.display = document.querySelector('.tile:not(.hidden)') ? 'none' : 'block';
+}
+const applyVolume = v => v.volume = Math.min(1, (v._own ?? 1) * $('#out').value / 100);
+const applySink = v => { if (v.setSinkId && $('#outDev').value) v.setSinkId($('#outDev').value).catch(() => {}); };
+$('#out').oninput = e => { $('#outV').textContent = e.target.value; document.querySelectorAll('.tile video').forEach(applyVolume); };
+$('#outDev').onchange = () => document.querySelectorAll('.tile video').forEach(applySink);
+
+/* ---------- Compartilhar tela ---------- */
+$('#btnShare').onclick = () => screenStream ? stopShare() : startShare();
+async function startShare() {
+  const h = +$('#res').value, fps = +$('#fps').value;
+  const video = { frameRate: { ideal: fps } };
+  if (h) video.height = { ideal: h };
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video,
+      audio: $('#sysaudio').checked ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false,
+    });
+  } catch (e) { return; }
+  const vt = screenStream.getVideoTracks()[0];
+  vt.contentHint = $('#hint').value;
+  vt.onended = stopShare;
+  pcs.forEach(addScreen);
+  // prévia local (sem som, para não dar eco)
+  const tile = document.createElement('div');
+  tile.className = 'tile'; tile.id = 't-local';
+  tile.innerHTML = '<video autoplay playsinline muted></video><div class="bar"><span>🖥️ Sua tela (prévia)</span></div>';
+  tile.querySelector('video').srcObject = screenStream;
+  $('#stage').appendChild(tile); updateEmpty();
+  $('#btnShare').classList.add('on'); $('#btnShare').textContent = '⏹️ Parar de compartilhar';
+}
+function addScreen(p) {
+  p.senders = screenStream.getTracks().map(t => p.pc.addTrack(t, screenStream));
+  applyBitrate(p);
+}
+function applyBitrate(p) {
+  p.senders.forEach(s => {
+    if (s.track?.kind !== 'video') return;
+    const pr = s.getParameters();
+    if (!pr.encodings || !pr.encodings.length) pr.encodings = [{}];
+    pr.encodings[0].maxBitrate = +$('#br').value * 1e6;
+    s.setParameters(pr).catch(() => {});
+  });
+}
+$('#br').onchange = () => pcs.forEach(applyBitrate);
+function stopShare() {
+  if (!screenStream) return;
+  screenStream.getTracks().forEach(t => t.stop());
+  pcs.forEach(p => { p.senders.forEach(s => { try { p.pc.removeTrack(s); } catch {} }); p.senders = []; });
+  screenStream = null;
+  document.getElementById('t-local')?.remove(); updateEmpty();
+  $('#btnShare').classList.remove('on'); $('#btnShare').textContent = '🖥️ Compartilhar tela';
+}
+
+/* ---------- Interface ---------- */
+function renderPeople() {
+  const ids = Object.keys(names);
+  $('#count').textContent = ids.length;
+  $('#people').innerHTML = '';
+  ids.forEach(id => {
+    const li = document.createElement('li');
+    const i = document.createElement('i'); i.textContent = names[id][0].toUpperCase();
+    li.append(i, names[id] + (id === myId ? ' (você)' : ''));
+    $('#people').appendChild(li);
+  });
+}
+$('#btnSet').onclick = () => $('#settings').classList.toggle('open');
+$('#btnLeave').onclick = () => { myId = null; ws.close(); location.reload(); };
+</script>
+</body>
+</html>
