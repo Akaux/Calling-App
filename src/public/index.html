@@ -111,12 +111,19 @@ const names = {};
 $('#joinForm').addEventListener('submit', async e => {
   e.preventDefault();
   myName = $('#nameIn').value.trim() || 'Anônimo';
+  $('#joinForm button').disabled = true;
+  $('#joinErr').textContent = 'Conectando…';
   ctx = new AudioContext();
   gainNode = ctx.createGain();
   micDest = ctx.createMediaStreamDestination();
   gainNode.connect(micDest);
-  try { await startMic(); } catch (err) { $('#joinErr').textContent = 'Sem acesso ao microfone — você entra só ouvindo.'; }
-  await fillDevices();
+  try {
+    // se o navegador ficar esperando a permissão por mais de 8s, segue sem microfone
+    await Promise.race([startMic(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))]);
+  } catch (err) {
+    $('#joinErr').textContent = 'Sem acesso ao microfone — você entra só ouvindo. Conectando…';
+  }
+  try { await fillDevices(); } catch (err) {}
   connect();
 });
 
@@ -138,8 +145,19 @@ function connect() {
       onSignal(m.from, m.data);
     }
   };
-  ws.onclose = () => { if (myId) location.reload(); };
+  ws.onclose = () => {
+    if (myId) { location.reload(); return; }
+    // ainda não entrou: o servidor pode estar acordando (Render grátis), tenta de novo
+    if (++tries <= 30) {
+      $('#joinErr').textContent = 'Servidor acordando, aguarde… (tentativa ' + tries + ')';
+      setTimeout(connect, 3000);
+    } else {
+      $('#joinErr').textContent = 'Não foi possível conectar ao servidor. Atualize a página e tente de novo.';
+      $('#joinForm button').disabled = false;
+    }
+  };
 }
+let tries = 0;
 const sig = (to, data) => ws.send(JSON.stringify({ type: 'signal', to, data }));
 
 /* ---------- Microfone ---------- */
