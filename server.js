@@ -4,8 +4,24 @@ const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 
+const fs = require('fs');
+const path = require('path');
+
 const app = express();
-app.use(express.static(__dirname + '/public'));
+const dirs = [path.join(__dirname, 'public'), path.join(__dirname, 'src', 'public')];
+const publicDir = dirs.find((d) => fs.existsSync(path.join(d, 'index.html')));
+if (publicDir) {
+  console.log('Servindo arquivos de:', publicDir);
+  app.use(express.static(publicDir));
+} else if (fs.existsSync(path.join(__dirname, 'index.html'))) {
+  console.log('index.html encontrado na raiz do projeto');
+  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+} else {
+  const ls = (d) => { try { return fs.readdirSync(d).join(', '); } catch { return '(não existe)'; } };
+  const msg = `index.html não encontrado.\nPasta do servidor: ${__dirname}\nArquivos aqui: ${ls(__dirname)}\nArquivos em public: ${ls(path.join(__dirname, 'public'))}`;
+  console.log(msg);
+  app.get('/', (req, res) => res.type('text').send(msg));
+}
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
